@@ -1,0 +1,7 @@
+# Visual studio files 
+*.user
+
+# Folders
+.vs
+bin
+bin-int

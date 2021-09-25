@@ -1,14 +1,16 @@
+/*
+*   GHANDOURI Féras - 11601442
+*   M2 ID3D - 2021/2022
+*/
+
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
+#include "opencv2/imgproc/imgproc.hpp"
 
+#include <chrono>
 #include <iostream>
 #include <algorithm>
-
-/*
-*   GHANDOURI Féras 11601442
-*   M2 ID3D
-*/
 
 struct WinProps
 {
@@ -21,89 +23,103 @@ struct WinProps
     cv::Size m_Size;
 };
 
-// Convolution
-template<typename T> 
-struct Filter
+namespace ImIO
 {
-    Filter(int rows, int cols)
-        : m_Rows(rows), m_Cols(cols), m_Type(type) {}
+    cv::Mat readImg(const std::string& filename)
+    {
+        cv::Mat img = cv::imread(filename);
 
-    int m_Type;
-    int m_Rows;
-    int m_Cols;
-};
+        if (img.empty())
+        {
+            std::cerr << "Could not read image: " << filename << std::endl;
+        }
 
-void convolution(cv::Mat& image, const cv::Mat& filter, int* f)
+        return img;
+    }
+}
+
+namespace ImOp
 {
-    int filterHalfRows = filter.rows / 2;
-    int filterHalfCols = filter.cols / 2;
-    
-	for (int x = filterHalfCols; x < image.cols - filterHalfCols; ++x)
-	{
-
-		for (int y = filterHalfRows; y < image.rows - filterHalfRows; ++y)
-		{
-            double sum = 0;
-            // Loop through pixels in image
-            for (int startX = x - filterHalfCols; startX < x + filterHalfCols; ++startX)
+    double  conv(const cv::Mat& image, const cv::Mat& filter, const cv::Point& pixel)
+    {
+        int half = floor(filter.rows / 2);
+        double value = 0.0;
+        for (int x = -half; x <= half; ++x)
+        {
+            for (int y = -half; y <= half; ++y)
             {
-                for (int startY = y - filterHalfRows; startY < y + filterHalfRows; ++startY)
-                {
-                   // sum = sum + image.at<uchar>(startY, startX) * f[curr];
-
-
-                }
-                
-
-                
+                value += image.at<double>(pixel.x + x, pixel.y + y) * filter.at<double>(x + half, y + half);
             }
+        }
 
+        //return value;
+        return std::max(0.0, std::min(value, 255.0));
+        // Normalize value to be -255 - 255 range
+        // Normalize value to be 0 - 255 range if image
+        // amplitude
+        // orientation/pente du gradient = theta arctan(grad(y)/grad(x))
+    }
+    cv::Mat conv2d(cv::Mat& srcImg, const cv::Mat& filter)
+    {
+        cv::Mat outImg(srcImg.rows, srcImg.cols, CV_64F);
 
-            // Normalize value to be -255 - 255 range
-            // Normalize value to be 0 - 255 range if image
-            image.at<uchar>(y, x) = std::min(std::max(0, value), 255);
-		}
-	}
+        if (srcImg.channels() > 1)
+        {
+            cv::cvtColor(srcImg, srcImg, cv::COLOR_BGR2GRAY);
+        }
 
-    // amplitude
-    // orientation/pente du gradient = theta arctan(grad(y)/grad(x))
+        if (srcImg.type() != CV_64F)
+        {
+            srcImg.convertTo(srcImg, CV_64F);
+        }
+
+        // Actual convolution
+        const int filterHalf = floor(filter.cols / 2);
+
+        // Perform convolution and measure time
+        auto start = std::chrono::high_resolution_clock::now();
+        for (int x = filterHalf; x < srcImg.rows - filterHalf; ++x)
+        {
+            for (int y = filterHalf; y < srcImg.cols - filterHalf; ++y)
+            {
+                outImg.at<double>(x, y) = conv(srcImg, filter, cv::Point(x, y));
+            }
+        }
+        auto end = std::chrono::high_resolution_clock::now();
+
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds> (end - start);
+
+        std::cout << "Image dimensions : " << srcImg.cols << "x" << srcImg.rows << " \n";
+        std::cout << "Convolution duration : " << duration.count() << " ms. \n";
+
+        srcImg.convertTo(srcImg, CV_8UC1);
+        outImg.convertTo(outImg, CV_8UC1);
+
+        return outImg;
+    }
 }
 
 int main()
 {
-    // Lire filtre à partir d'un fichier
-    // Lire image  à partir d'un fichier
-    std::string image_path = "../../data/img/example.jpg";
-    WinProps props("Default", {800, 600});
+    // Initialize window
+    WinProps resultWindow("Result", {800, 600});
+    cv::namedWindow(resultWindow.name());
 
-    // 3x3 matrix of double
+    // Read source image
+    cv::Mat img = ImIO::readImg("../../data/img/pantheon.jpg");
 
-    int f[9] = { -1, 0, 1,
-                 -1, 0, 1,
-                 -1, 0, 1 };
-    cv::Mat smooth = (cv::Mat_<int>(3, 3) <<
-         0, 0, 0,
-         0, 1, 0,
-         0, 0, 0
-        );
+    // 3x3 directional filters
+    cv::Mat prewitt = (cv::Mat_<double>(3,3) << /* R0 */ -1.0, 0.0, 1.0,   /* R1 */ -1.0, 0.0, 1.0,  /* R2 */-1.0, 0.0, 1.0)   * 1.0 / 3.0;
+    cv::Mat sobel   = (cv::Mat_<double>(3,3) << /* R0 */ -1.0,  0.0,  1.0, /* R1 */ -2.0, 0.0, 2.0,  /* R2 */ -1.0, 0.0, 1.0)  * 1.0 / 4.0;
+    cv::Mat kirsch4 = (cv::Mat_<double>(3,3) << /* R0 */ -3.0, -3.0, -3.0, /* R1 */ 5.0,  0.0, -3.0, /* R2 */ 5.0,  5.0, -3.0) * 1.0 / 15.0;
 
-    //smooth = smooth * 1.0 / 16.0
-    cv::Mat img = cv::imread(image_path, cv::IMREAD_GRAYSCALE);
-
-    convolution(img, smooth, f);
-
-    if(img.empty())
-    {
-        std::cout << "Could not read the image: " << image_path << std::endl;
-        return 1;
-    }
-
-    cv::namedWindow (props.name(), cv::WINDOW_NORMAL);
-    cv::resizeWindow(props.name(), props.size());
+    // Apply convolution
+    cv::Mat out = ImOp::conv2d(img, kirsch4);
     
-    imshow(props.name(), img);
-
-    // Wait for a keystroke in the 
+    // Display result
+    imshow(resultWindow.name(), out);
+    
+    // Wait for a keystroke before terminating
     int key = cv::waitKey(0); 
 
     return 0;

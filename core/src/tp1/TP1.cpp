@@ -29,10 +29,7 @@ namespace ImIO
     {
         cv::Mat img = cv::imread(filename);
 
-        if (img.empty())
-        {
-            std::cerr << "Could not read image: " << filename << std::endl;
-        }
+        assert( !img.empty(), ("Could not read image" ) );
 
         return img;
     }
@@ -40,7 +37,7 @@ namespace ImIO
 
 namespace ImOp
 {
-    double  conv(const cv::Mat& image, const cv::Mat& filter, const cv::Point& pixel)
+    double conv(const cv::Mat& image, const cv::Mat& filter, const cv::Point& pixel)
     {
         int half = floor(filter.rows / 2);
         double value = 0.0;
@@ -59,7 +56,14 @@ namespace ImOp
         // amplitude
         // orientation/pente du gradient = theta arctan(grad(y)/grad(x))
     }
-    cv::Mat conv2d(cv::Mat& srcImg, const cv::Mat& filter)
+
+    template<typename T>
+    T amplitude(const T& x,  const T& y) { return sqrt( (x*x) + (y*y) ); }
+
+    template<typename T>
+    T direction(const T& x,  const T& y) { return cvFastArctan(y, x); }
+
+    cv::Mat conv2d(cv::Mat& srcImg, const cv::Mat& filter, bool isImage)
     {
         cv::Mat outImg(srcImg.rows, srcImg.cols, CV_64F);
 
@@ -92,11 +96,74 @@ namespace ImOp
         std::cout << "Image dimensions : " << srcImg.cols << "x" << srcImg.rows << " \n";
         std::cout << "Convolution duration : " << duration.count() << " ms. \n";
 
-        srcImg.convertTo(srcImg, CV_8UC1);
-        outImg.convertTo(outImg, CV_8UC1);
+        if(isImage)
+        {
+            srcImg.convertTo(srcImg, CV_8UC1);
+            outImg.convertTo(outImg, CV_8UC1);
+        }
 
         return outImg;
     }
+
+    cv::Mat computeDirection(cv::Mat& Gx, cv::Mat& Gy)
+    {
+        cv::Mat out(Gx.rows, Gx.cols, CV_64F);
+        Gx.convertTo(Gx, CV_64F);
+        Gy.convertTo(Gy, CV_64F);
+
+        for(int x = 0; x < Gx.rows; ++x)
+        {
+            for(int y = 0; y < Gx.cols; ++y)
+            {
+                out.at<double>(x,y) = direction(Gx.at<double>(x,y), Gy.at<double>(x,y));
+            }
+        }
+
+        return out;
+    }
+
+     cv::Mat computeAmplitude(cv::Mat& Gx, cv::Mat& Gy)
+     {
+         cv::Mat out(Gx.rows, Gx.cols, CV_64F);
+         Gx.convertTo(Gx, CV_64F);
+         Gy.convertTo(Gy, CV_64F);
+
+         for (int x = 0; x < Gx.rows; ++x)
+         {
+             for (int y = 0; y < Gx.cols; ++y)
+             {
+                 out.at<double>(x,y) = amplitude(Gx.at<double>(x,y), Gy.at<double>(x,y));
+             }
+         }
+
+         return out;
+     }
+    
+    cv::Mat globalThreshold(cv::Mat& imAmplitude, double threshold)
+    {
+        cv::Mat outImg(imAmplitude.rows, imAmplitude.cols, CV_8UC1);
+
+        for(int x = 0; x < imAmplitude.rows; ++x)
+        {
+            for(int y = 0; y < imAmplitude.cols; ++y)
+            {
+                double& value = imAmplitude.at<double>(x, y) ;
+                unsigned char &grayValue = outImg.at<uchar>(x, y);
+                if(value / 255.0 < threshold)
+                {
+                    grayValue = 0;
+                }
+                else 
+                {
+                    grayValue = 255;
+                }
+            }
+
+        }
+
+        return outImg;
+    }
+
 }
 
 int main()
@@ -109,18 +176,48 @@ int main()
     cv::Mat img = ImIO::readImg("../../data/img/pantheon.jpg");
 
     // 3x3 directional filters
-    cv::Mat prewitt = (cv::Mat_<double>(3,3) << /* R0 */ -1.0, 0.0, 1.0,   /* R1 */ -1.0, 0.0, 1.0,  /* R2 */-1.0, 0.0, 1.0)   * 1.0 / 3.0;
-    cv::Mat sobel   = (cv::Mat_<double>(3,3) << /* R0 */ -1.0,  0.0,  1.0, /* R1 */ -2.0, 0.0, 2.0,  /* R2 */ -1.0, 0.0, 1.0)  * 1.0 / 4.0;
-    cv::Mat kirsch4 = (cv::Mat_<double>(3,3) << /* R0 */ -3.0, -3.0, -3.0, /* R1 */ 5.0,  0.0, -3.0, /* R2 */ 5.0,  5.0, -3.0) * 1.0 / 15.0;
+
+    cv::Mat gradientX    = (cv::Mat_<double>(3,3) << /* R0 */ -1.0, 0.0, 1.0,   /* R1 */ -1.0, 0.0, 1.0,  /* R2 */-1.0, 0.0, 1.0)  * 1.0 / 3.0; // Prewitt filter
+    cv::Mat gradientY    = (cv::Mat_<double>(3,3) << /* R0 */-1.0,-1.0,-1.0,   /* R1 */ 0.0, 0.0, 0.0,  /* R2 */  1.0,  1.0,  1.0) * 1.0 / 3.0;
+    cv::Mat gradientDpos = (cv::Mat_<double>(3,3) << /* R0 */ 1.0, 1.0, 0.0,   /* R1 */ 1.0, 0.0, -1.0,  /* R2 */ 0.0, -1.0, -1.0) * 1.0 / 3.0;
+    cv::Mat gradientDneg = (cv::Mat_<double>(3,3) << /* R0 */ 0.0, 1.0, 1.0,   /* R1 */-1.0, 0.0, 1.0,  /* R2 */ -1.0, -1.0, 0.0)  * 1.0 / 3.0;
+
+    cv::Mat sobel        = (cv::Mat_<double>(3,3) << /* R0 */ -1.0,  0.0,  1.0, /* R1 */ -2.0, 0.0, 2.0,  /* R2 */ -1.0, 0.0, 1.0)  * 1.0 / 4.0;
+    cv::Mat kirsch4      = (cv::Mat_<double>(3,3) << /* R0 */ -3.0, -3.0, -3.0, /* R1 */ 5.0,  0.0, -3.0, /* R2 */ 5.0,  5.0, -3.0) * 1.0 / 15.0;
 
     // Apply convolution
-    cv::Mat out = ImOp::conv2d(img, kirsch4);
-    
+    cv::Mat outGradientX       = ImOp::conv2d(img, gradientX, false);
+    cv::Mat outGradientY       = ImOp::conv2d(img, gradientY, false);
+    cv::Mat outGradientDpos    = ImOp::conv2d(img, gradientDpos, false);
+    cv::Mat outGradientDneg    = ImOp::conv2d(img, gradientDneg, false);
+
+    cv::Mat outSobel           = ImOp::conv2d(img, sobel, false);
+    cv::Mat outKirsch4         = ImOp::conv2d(img, kirsch4, false);
+
+
+    // Threshold
+    cv::Mat amplitudeBiDirectional = ImOp::computeAmplitude(outGradientX, outGradientY);
+
+    cv::Mat outGlobalThreshold     = ImOp::globalThreshold(amplitudeBiDirectional , 0.1);
+
+    // Optional : concatenate results into a single mat
+    //std::vector<cv::Mat> outMats      {outGradientX, outSobel, outKirsch4, outGradientY };
+    //std::vector<cv::Mat> outGradients {outGradientX, outGradientY, outGradientDpos, outGradientDneg};
+
+    //cv::Mat outGradientsConcat;                            
+    //cv::hconcat(outGradients, outGradientsConcat); 
+
+    //ImOp::computeDirection(outGradientX, outGradientY);
     // Display result
-    imshow(resultWindow.name(), out);
+    imshow(resultWindow.name(), outGlobalThreshold);
     
     // Wait for a keystroke before terminating
     int key = cv::waitKey(0); 
 
     return 0;
 }
+
+
+
+// Links
+// https://fr.wikipedia.org/wiki/Filtre_de_Prewitt

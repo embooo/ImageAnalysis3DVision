@@ -63,7 +63,7 @@ namespace ImOp
     template<typename T>
     T direction(const T& x,  const T& y) { return cvFastArctan(y, x); }
 
-    cv::Mat conv2d(cv::Mat& srcImg, const cv::Mat& filter, bool isImage)
+    cv::Mat conv2d(cv::Mat& srcImg, const cv::Mat& filter, bool OutputIsImage)
     {
         cv::Mat outImg(srcImg.rows, srcImg.cols, CV_64F);
 
@@ -86,7 +86,14 @@ namespace ImOp
         {
             for (int y = filterHalf; y < srcImg.cols - filterHalf; ++y)
             {
-                outImg.at<double>(x, y) = conv(srcImg, filter, cv::Point(x, y));
+                if (OutputIsImage)
+                {
+                    outImg.at<double>(x, y) = conv(srcImg, filter, cv::Point(x, y)); // value is in [0;255] range
+                }
+                else
+                {
+                    outImg.at<double>(x, y) = conv(srcImg, filter, cv::Point(x, y)) / 255; // normalize value to be in [0;1] range
+                }
             }
         }
         auto end = std::chrono::high_resolution_clock::now();
@@ -96,9 +103,8 @@ namespace ImOp
         std::cout << "Image dimensions : " << srcImg.cols << "x" << srcImg.rows << " \n";
         std::cout << "Convolution duration : " << duration.count() << " ms. \n";
 
-        if(isImage)
+        if(OutputIsImage)
         {
-            srcImg.convertTo(srcImg, CV_8UC1);
             outImg.convertTo(outImg, CV_8UC1);
         }
 
@@ -147,9 +153,9 @@ namespace ImOp
         {
             for(int y = 0; y < imAmplitude.cols; ++y)
             {
-                double& value = imAmplitude.at<double>(x, y) ;
+                double& value = imAmplitude.at<double>(x, y);
                 unsigned char &grayValue = outImg.at<uchar>(x, y);
-                if(value / 255.0 < threshold)
+                if(value < threshold)
                 {
                     grayValue = 0;
                 }
@@ -173,7 +179,7 @@ int main()
     cv::namedWindow(resultWindow.name());
 
     // Read source image
-    cv::Mat img = ImIO::readImg("../../data/img/pantheon.jpg");
+    cv::Mat img = ImIO::readImg("../../data/img/lena_std.tif");
 
     // 3x3 directional filters
 
@@ -191,25 +197,25 @@ int main()
     cv::Mat outGradientDpos    = ImOp::conv2d(img, gradientDpos, false);
     cv::Mat outGradientDneg    = ImOp::conv2d(img, gradientDneg, false);
 
-    cv::Mat outSobel           = ImOp::conv2d(img, sobel, false);
+    cv::Mat outSobel           = ImOp::conv2d(img, sobel, true);
     cv::Mat outKirsch4         = ImOp::conv2d(img, kirsch4, false);
 
 
     // Threshold
     cv::Mat amplitudeBiDirectional = ImOp::computeAmplitude(outGradientX, outGradientY);
 
-    cv::Mat outGlobalThreshold     = ImOp::globalThreshold(amplitudeBiDirectional , 0.1);
+    cv::Mat outGlobalThreshold     = ImOp::globalThreshold(amplitudeBiDirectional, 0.1);
 
     // Optional : concatenate results into a single mat
-    //std::vector<cv::Mat> outMats      {outGradientX, outSobel, outKirsch4, outGradientY };
-    //std::vector<cv::Mat> outGradients {outGradientX, outGradientY, outGradientDpos, outGradientDneg};
+    std::vector<cv::Mat> outMats      {outGradientX, outSobel, outKirsch4, outGradientY };
+    std::vector<cv::Mat> outGradients {outGradientX, outGradientY, outGradientDpos, outGradientDneg};
 
-    //cv::Mat outGradientsConcat;                            
-    //cv::hconcat(outGradients, outGradientsConcat); 
+    cv::Mat outGradientsConcat;                            
+    cv::hconcat(outGradients, outGradientsConcat); 
 
     //ImOp::computeDirection(outGradientX, outGradientY);
     // Display result
-    imshow(resultWindow.name(), outGlobalThreshold);
+    imshow(resultWindow.name(), outSobel);
     
     // Wait for a keystroke before terminating
     int key = cv::waitKey(0); 

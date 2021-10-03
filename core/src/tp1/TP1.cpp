@@ -63,6 +63,13 @@ namespace ImOp
     template<typename T>
     T direction(const T& x,  const T& y) { return cvFastArctan(y, x); }
 
+    /// <summary>
+    /// Apply a convolution filter of an input image
+    /// </summary>
+    /// <param name="srcImg"></param>
+    /// <param name="filter"></param>
+    /// <param name="OutputIsImage"></param>
+    /// <returns></returns>
     cv::Mat conv2d(cv::Mat& srcImg, const cv::Mat& filter, bool OutputIsImage)
     {
         cv::Mat outImg(srcImg.rows, srcImg.cols, CV_64F);
@@ -111,7 +118,7 @@ namespace ImOp
         return outImg;
     }
 
-    cv::Mat computeDirection(cv::Mat& Gx, cv::Mat& Gy)
+    cv::Mat computeGradientOrientation(cv::Mat& Gx, cv::Mat& Gy)
     {
         cv::Mat out(Gx.rows, Gx.cols, CV_64F);
         Gx.convertTo(Gx, CV_64F);
@@ -128,25 +135,32 @@ namespace ImOp
         return out;
     }
 
-     cv::Mat computeAmplitude(cv::Mat& Gx, cv::Mat& Gy)
-     {
-         cv::Mat out(Gx.rows, Gx.cols, CV_64F);
-         Gx.convertTo(Gx, CV_64F);
-         Gy.convertTo(Gy, CV_64F);
+	cv::Mat computeGradientAmplitude(cv::Mat& Gx, cv::Mat& Gy)
+	{
+		cv::Mat out(Gx.rows, Gx.cols, CV_64F);
+		Gx.convertTo(Gx, CV_64F);
+		Gy.convertTo(Gy, CV_64F);
 
-         for (int x = 0; x < Gx.rows; ++x)
-         {
-             for (int y = 0; y < Gx.cols; ++y)
-             {
-                 out.at<double>(x,y) = amplitude(Gx.at<double>(x,y), Gy.at<double>(x,y));
-             }
-         }
+		for (int x = 0; x < Gx.rows; ++x)
+		{
+			for (int y = 0; y < Gx.cols; ++y)
+			{
+				out.at<double>(x, y) = amplitude(Gx.at<double>(x, y), Gy.at<double>(x, y));
+			}
+		}
 
-         return out;
-     }
+		return out;
+	}
     
+    /// <summary>
+    /// Applies a global threshold to an image based on the value of the gradient at each pixel
+    /// </summary>
+    /// <param name="imAmplitude"> Matrix containing the amplitude of a the gradient for each pixel </param>
+    /// <param name="threshold"> Arbitrary value </param>
+    /// <returns> Image with a local threshold applied </returns>
     cv::Mat globalThreshold(cv::Mat& imAmplitude, double threshold)
     {
+        // Return an image
         cv::Mat outImg(imAmplitude.rows, imAmplitude.cols, CV_8UC1);
 
         for(int x = 0; x < imAmplitude.rows; ++x)
@@ -160,6 +174,46 @@ namespace ImOp
                     grayValue = 0;
                 }
                 else 
+                {
+                    grayValue = 255;
+                }
+            }
+
+        }
+
+        return outImg;
+    }
+    
+    /// <summary>
+    /// Applies a local threshold to an image based on the mean of the gradients in the neighborhood of a pixel
+    /// </summary>
+    /// <param name="imAmplitude"> Matrix containing the amplitude of a the gradient for each pixel </param>
+    /// <param name="filterDimension"> Size of the neighborhood to compute the local threshold </param>
+    /// <returns> Image with a global threshold applied </returns>
+    cv::Mat localThreshold(cv::Mat& gradientAmp, const cv::Size& filterDimension)
+    {
+        // Filter dimensions define the extent of the neighborhood 
+        // to compute a local threshold
+        
+        cv::Mat outImg(gradientAmp.rows, gradientAmp.cols, CV_8UC1);
+        cv::Mat meanFilter(filterDimension, CV_64F);
+        meanFilter = 1.0 / (filterDimension.height * filterDimension.width);
+
+        const int filterHalf = floor(filterDimension.width / 2);
+
+        for (int x = filterHalf; x < gradientAmp.rows - filterHalf; ++x)
+        {
+            for (int y = filterHalf; y < gradientAmp.cols - filterHalf; ++y)
+            {
+                double& value = gradientAmp.at<double>(x, y);
+                double localMean = conv(gradientAmp, meanFilter, cv::Point(x, y));
+                unsigned char& grayValue = outImg.at<uchar>(x, y);
+
+                if (value < localMean)
+                {
+                    grayValue = 0;
+                }
+                else
                 {
                     grayValue = 255;
                 }
@@ -202,9 +256,10 @@ int main()
 
 
     // Threshold
-    cv::Mat amplitudeBiDirectional = ImOp::computeAmplitude(outGradientX, outGradientY);
+    cv::Mat amplitudeBiDirectional = ImOp::computeGradientAmplitude(outGradientX, outGradientY);
 
     cv::Mat outGlobalThreshold     = ImOp::globalThreshold(amplitudeBiDirectional, 0.1);
+    cv::Mat outLocalThreshold      = ImOp::localThreshold(amplitudeBiDirectional, cv::Size(3,3));
 
     // Optional : concatenate results into a single mat
     std::vector<cv::Mat> outMats      {outGradientX, outSobel, outKirsch4, outGradientY };
@@ -215,7 +270,7 @@ int main()
 
     //ImOp::computeDirection(outGradientX, outGradientY);
     // Display result
-    imshow(resultWindow.name(), outSobel);
+    imshow(resultWindow.name(), outLocalThreshold);
     
     // Wait for a keystroke before terminating
     int key = cv::waitKey(0); 

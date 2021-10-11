@@ -1,0 +1,26 @@
+﻿  TP1.cpp
+C:\dev\ImageAnalysis3DVision\core\src\tp1\TP1.cpp(48,9): warning C4002: too many arguments for function-like macro invocation 'assert'
+C:\dev\ImageAnalysis3DVision\core\src\tp1\TP1.cpp(59,18): warning C4244: 'initializing': conversion from 'double' to 'int', possible loss of data
+C:\dev\ImageAnalysis3DVision\core\src\tp1\TP1.cpp(103,37): warning C4244: 'initializing': conversion from 'double' to 'int', possible loss of data
+C:\dev\ImageAnalysis3DVision\core\src\tp1\TP1.cpp(103,30): warning C4244: 'initializing': conversion from 'double' to 'const int', possible loss of data
+C:\dev\ImageAnalysis3DVision\core\src\tp1\TP1.cpp(288,37): warning C4244: 'initializing': conversion from 'double' to 'int', possible loss of data
+C:\dev\ImageAnalysis3DVision\core\src\tp1\TP1.cpp(288,30): warning C4244: 'initializing': conversion from 'double' to 'const int', possible loss of data
+C:\dev\ImageAnalysis3DVision\core\src\tp1\TP1.cpp(316,9): warning C4002: too many arguments for function-like macro invocation 'assert'
+C:\dev\ImageAnalysis3DVision\core\src\tp1\TP1.cpp(323,18): warning C4244: 'initializing': conversion from 'double' to 'int', possible loss of data
+C:\dev\ImageAnalysis3DVision\core\src\tp1\TP1.cpp(79,67): warning C4244: 'argument': conversion from 'const T' to 'float', possible loss of data
+          with
+          [
+              T=double
+          ]
+C:\dev\ImageAnalysis3DVision\core\src\tp1\TP1.cpp(172): message : see reference to function template instantiation 'T ImOp::direction<_Tp>(const T &,const T &)' being compiled
+          with
+          [
+              T=double,
+              _Tp=double
+          ]
+C:\dev\ImageAnalysis3DVision\core\src\tp1\TP1.cpp(79,64): warning C4244: 'argument': conversion from 'const T' to 'float', possible loss of data
+          with
+          [
+              T=double
+          ]
+  tp1.vcxproj -> C:\dev\ImageAnalysis3DVision\bin\Debug-windows-x86_64\tp1\tp1.exe

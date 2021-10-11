@@ -1,6 +1,6 @@
 # TP-AnalyseImage
 
-On Windows, execute buildVS2019.bat to generate de project files for Visual Studio 2019 with premake.
+On Windows, execute buildVS2019.bat to generate the project files for Visual Studio 2019 with premake.
 You can modify this script to generate for another IDE : https://premake.github.io/docs/Using-Premake/
 
 Once built, the binary is located in the bin folder located at the root of the archive.

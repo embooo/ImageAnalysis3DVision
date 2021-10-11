@@ -1,16 +1,32 @@
 /*
 *   GHANDOURI Féras - 11601442
 *   M2 ID3D - 2021/2022
+* 
+* 
+*   Implemented :
+*   Convolution
+*   Bi-directional gradient (Amplitude + direction)
+*   Multi-directional gradient (Amplitude + direction)
+* 
+*   Global threshold
+*   Local threshold
+*   Hysteresis threshold
+*   Non-max suppression
 */
 
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
 #include "opencv2/imgproc/imgproc.hpp"
+#include <opencv2/opencv.hpp>
 
 #include <chrono>
 #include <iostream>
 #include <algorithm>
+
+#include <stdio.h>
+
+#include <stdarg.h>
 
 struct WinProps
 {
@@ -33,6 +49,7 @@ namespace ImIO
 
         return img;
     }
+
 }
 
 namespace ImOp
@@ -345,7 +362,7 @@ namespace ImOp
     }
 
     
-
+    // Non-max suppression
     cv::Mat affinage(const cv::Mat& gradientAmp, const cv::Mat& gradientDir)
     {
         cv::Mat outImg = cv::Mat(gradientAmp.size(), CV_64F);
@@ -409,7 +426,7 @@ int main(int argc, char* argv[])
     // Read file
     if (argc < 2)
     {
-        std::cerr << "Usage : " << argv[0] << " <image.format> ." << std::endl;
+        std::cerr << "Usage : " << argv[0] << " g | t <image.format> ." << std::endl;
     }
     else
     {
@@ -432,30 +449,39 @@ int main(int argc, char* argv[])
         cv::Mat kirsch4 = (cv::Mat_<double>(3, 3) << /* R0 */ -3.0, -3.0, -3.0, /* R1 */ 5.0, 0.0, -3.0, /* R2 */ 5.0, 5.0, -3.0) * 1.0 / 15.0;
 
         // Apply convolution
-        cv::Mat outGradientX = ImOp::conv2d(img, gradientX, false);
-        cv::Mat outGradientY = ImOp::conv2d(img, gradientY, false);
+        cv::Mat outGradientX  = ImOp::conv2d(img, gradientX, false);
+        cv::Mat outGradientY  = ImOp::conv2d(img, gradientY, false);
         cv::Mat outGradientNW = ImOp::conv2d(img, gradientNW, false); // north west direction, pi/4
         cv::Mat outGradientNE = ImOp::conv2d(img, gradientNE, false); // north west direction, 3pi/4
 
-        cv::Mat outSobel = ImOp::conv2d(img, sobel, true);
+        cv::Mat outSobel   = ImOp::conv2d(img, sobel, true);
         cv::Mat outKirsch4 = ImOp::conv2d(img, kirsch4, false);
 
 
         // Threshold
-        cv::Mat amplitudeGradientX = ImOp::computeAmplitudeGradient(outGradientX, 'X');
-        cv::Mat amplitudeGradientY = ImOp::computeAmplitudeGradient(outGradientY, 'Y');
-        cv::Mat amplitudeBiDirectional = ImOp::computeAmplitudeGBD(outGradientX, outGradientY);
+        cv::Mat amplitudeGradientX        = ImOp::computeAmplitudeGradient(outGradientX, 'X');
+        cv::Mat amplitudeGradientY        = ImOp::computeAmplitudeGradient(outGradientY, 'Y');
+        cv::Mat amplitudeBiDirectional    = ImOp::computeAmplitudeGBD(outGradientX, outGradientY);
         cv::Mat amplitudeMultiDirectional = ImOp::computeAmplitudeGMD(outGradientX, outGradientY, outGradientNW, outGradientNE);
 
 
         cv::Mat outGlobalThreshold = ImOp::globalThreshold(amplitudeBiDirectional, 0.1);
-        cv::Mat outLocalThreshold = ImOp::localThreshold(amplitudeBiDirectional, cv::Size(11, 11));
-        cv::Mat outHysteresis = ImOp::hysteresisThreshold(amplitudeBiDirectional, cv::Size(3, 3), 0.13, 0.5);
+        cv::Mat outLocalThreshold  = ImOp::localThreshold(amplitudeBiDirectional, cv::Size(11, 11));
+        cv::Mat outHysteresis      = ImOp::hysteresisThreshold(amplitudeBiDirectional, cv::Size(3, 3), 0.13, 0.5);
 
         // Optional : concatenate results into a single mat
+        // Filters
         std::vector<cv::Mat> outMats{ outGradientX, outSobel, outKirsch4, outGradientY };
+        // Gradient amplitude values
         std::vector<cv::Mat> outGradients{ amplitudeGradientX, amplitudeGradientY, amplitudeBiDirectional, amplitudeMultiDirectional };
-        std::vector<cv::Mat> outThresholds{ outGlobalThreshold, outLocalThreshold, outHysteresis };
+
+        // Affinage
+        cv::Mat directionBiDirectional = ImOp::computeGradientDirection(outGradientX, outGradientY);
+        cv::Mat affin = ImOp::affinage(amplitudeBiDirectional, directionBiDirectional);
+        cv::Mat affinThresh = ImOp::hysteresisThreshold(affin, cv::Size(3, 3), 0.13, 0.5);
+
+        // Thresholding
+        std::vector<cv::Mat> outThresholds{ outGlobalThreshold, outLocalThreshold, outHysteresis, affinThresh };
 
         cv::Mat outGradientsConcat;
         cv::hconcat(outGradients, outGradientsConcat);
@@ -463,18 +489,22 @@ int main(int argc, char* argv[])
         cv::Mat outThresholdsConcat;
         cv::hconcat(outThresholds, outThresholdsConcat);
 
-        // Affinage
-
-        cv::Mat directionBiDirectional = ImOp::computeGradientDirection(outGradientX, outGradientY);
-        cv::Mat affin = ImOp::affinage(amplitudeBiDirectional, directionBiDirectional);
-
-
-        cv::Mat affinThresh = ImOp::hysteresisThreshold(affin, cv::Size(3, 3), 0.13, 0.5);
-
         // Display original image
         imshow("Source Image", orig);
+
         // Display result
-        imshow(resultWindow.name(), affinThresh);
+
+        imshow("Amplitude Gradient X", amplitudeGradientX);
+        imshow("Amplitude Gradient Y", amplitudeGradientY);
+        imshow("Amplitude Bidirectional", amplitudeBiDirectional);
+        imshow("Amplitude Multi-directional", amplitudeMultiDirectional);
+
+        imshow("Global thresholding", outGlobalThreshold);
+        imshow("Local Thresholding", outLocalThreshold);
+        imshow("Hysteresis Thresholding", outHysteresis);
+        imshow("Non-max suppression + Hysteresis", affinThresh);
+
+        //imshow("Thresholds [Global ; Local; Hysteresis ; Non-Max Suppression + Hysteresis]", outThresholdsConcat);
 
         // Wait for a keystroke before terminating
         int key = cv::waitKey(0);

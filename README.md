@@ -6,5 +6,4 @@ You can modify this script to generate for another IDE : https://premake.github.
 Once built, the binary is located in the bin folder located at the root of the archive.
 To execute, either use a command prompt and specify a file e.g tp1.exe <image.format> or drag and drop an image file into the executable.
 
-The different image operations are under the ImOp namespace in TP1.cpp.
-
+The program is displaying the images of the gradient amplitudes, and different thresholds in different windows.
